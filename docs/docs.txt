@@ -1,0 +1,9 @@
+https://simpleepic.medium.com/creating-a-web-server-using-c-31a42dc8ec09
+
+https://dev.to/jeffreythecoder/how-i-built-a-simple-http-server-from-scratch-using-c-739
+
+https://blog.billvanleeuwen.ca/writing-an-http-server-in-c
+
+https://youtu.be/7GBlCinu9yg
+
+
