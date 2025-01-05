@@ -11,7 +11,7 @@
 #include "unistd.h"
 #include "utils.h"
 
-#define PORT 8080
+#define PORT 80
 
 /******************************************************************************/
 /*                              DEFINES                                       */
@@ -69,21 +69,22 @@ int main(int argc, char const *argv[])
     }
 
     printf("Server listening on port %d\n", PORT);
+    printf("http://localhost:%d\n", PORT);
 
     while(1)
     {
         struct sockaddr_in client_address;
         socklen_t client_address_len = sizeof(client_address);
-        int client_fd = accept(server_fd, (struct sockaddr *)&client_address, &client_address_len);
+        int* client_fd = malloc(sizeof(int));
 
-        if ((*client_fd) = accept(server_fd, (struct sockaddr *)&client_address, &client_address_len) < 0)
+        if (*(client_fd) = accept(server_fd, (struct sockaddr *)&client_address, &client_address_len) < 0)
         {
             perror("accept failed");
             exit(EXIT_FAILURE);
         }
 
         pthread_t thread;
-        pthread_create(&thread, NULL, handle_client, (void*)&client_fd);
+        pthread_create(&thread, NULL, handle_client, (void*)client_fd);
         pthread_detach(thread);
     }
 

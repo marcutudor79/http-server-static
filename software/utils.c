@@ -10,6 +10,7 @@
 #include "regex.h"
 #include "stdio.h"
 #include "string.h"
+#include "stdint.h"
 
 #include "./lib/file_helper.h"
 #include "./lib/http_helper.h"
@@ -18,11 +19,17 @@
 /*                              DEFINES                                       */
 /******************************************************************************/
 
-/* Max buffer size 100 MB */
-#define BUFFER_SIZE 104857600
+/* Max REQUEST buffer size 10 KB */
+#define REQUEST_SIZE (10240U)
+
+/* Max REPLY buffer response size 1 MB */
+#define REPLY_SIZE (1048576U)
 
 /* Folder for html and other server related files */
-#define SRC_DIR "./src"
+#define SRC_DIR "/home/bl4ck/_code/http-server-static/software/src/"
+
+/* Max length of the request */
+#define MAX_LEN_REQUEST (100U)
 
 /******************************************************************************/
 /*                              TYPEDEFS                                      */
@@ -44,103 +51,104 @@
 /*                              GLOBAL FUNCS                                  */
 /******************************************************************************/
 
-void build_http_response(const char* file_name, const char* file_ext, char* response, size_t* response_len)
-{
-    printf("Considered FILE NAME: %s\n", file_name);
-
-    // build HTTP header
-    const char* mime_type = get_mime_type(file_ext);
-    char* header = (char*)malloc(BUFFER_SIZE * sizeof(char));
-    snprintf(header, BUFFER_SIZE,
-             "HTTP/1.1 200 OK\r\n
-             Content-Type: %s\r\n
-             \r\n",
-             mime_type);
-
-    // Try to open the file
-    int file_fd = get_file_descriptor(SRC_DIR, file_name);
-    if (file_fd == -1)
-    {
-        snprintf(response, BUFFER_SIZE,
-                 "HTTP/1.1 404 Not Found\r\n"
-                 "Content-Type: text/plain\r\n"
-                 "\r\n"
-                 "404 Not Found\n");
-
-        *response_len = strlen(response);
-        return;
-    }
-
-    // Get the file size for Content-Length
-    struct stat file_stat;
-    fstat(file_fd, &file_stat);
-    off_t file_size = file_stat.st_size;
-    printf("File descriptor: %d size %li\n", file_fd, file_size);
-
-    // Copy header to response
-    *response_len = 0;
-    memcpy(response, header, strlen(header));
-    *response_len += strlen(header);
-
-    // Copy file content to response
-    ssize_t bytes_read = 0;
-    while ((bytes_read = read(file_fd, response + *response_len, BUFFER_SIZE)) > 0)
-    {
-        *response_len += bytes_read;
-    }
-
-    free(header);
-    close(file_fd);
-}
 
 void* handle_client(void* arg)
 {
-    int client_fd = *((int*)arg);
-    char* buffer = (char*)malloc(BUFFER_SIZE * sizeof(char));
+    int client_fd       = *((int*)arg);
+    char* buffer        = (char*)malloc(REQUEST_SIZE);
+    uint32_t bytes_received = 0U;
+    char* buffer_tokens = NULL;
+    char* response      = (char*)malloc(REPLY_SIZE);
+    uint32_t response_len   = 0U;
+    FILE *file          = NULL;
 
-    // receive a request data from the client and store into buffer
-    ssize_t bytes_received = recv(client_fd, buffer, BUFFER_SIZE, 0);
+    // HTTP content
+    char* method    = NULL;
+    char* file_path = NULL;
 
-    if (bytes_received < 0)
+    // receive the bytes
+    bytes_received = recv(client_fd, buffer, REQUEST_SIZE, 0);
+
+    // if a request was received
+    if (bytes_received > 0U)
     {
+        puts(buffer);
 
-        regex_t regex;
-        regcomp(&regex, "GET /(.*) HTTP/1.1", REG_EXTENDED);
-        regmatch_t matches[2];
+        // extract the method
+        buffer_tokens = strtok(buffer, " ");
+        method = buffer_tokens;
 
-        if (regexec(&regex, buffer, 2, matches, 0) == 0)
+        // check if the method is valid
+        if (method == NULL)
         {
-            buffer[matches[1].rm_eo] = '\0';
-            const char* url_encoded_file_name = buffer + matches[1].rm_so;
-            char* file_name = url_decode(url_encoded_file_name);
-
-            // If the route is requested in GET, then reply with index
-            if (strcmp(file_name, "") == 0)
-            {
-                strcpy(file_name, "index.html");
-            }
-
-            // Get the file extension
-            char file_ext[32] = {0};
-            strcpy(file_ext, get_file_extension(file_name));
-
-            // Build the HTTP response
-            char* response = (char*)malloc(BUFFER_SIZE *2* sizeof(char));
-            size_t response_len = 0;
-            build_http_response(file_name, file_ext, response, &response_len);
-
-            // Send the response to the client
-            send(client_fd, response, response_len, 0);
-
-            free(response);
-            free(file_name);
+            goto exit;
         }
 
-        regfree(&regex);
+        // if the method is GET
+        if (strcmp(method, "GET") == 0)
+        {
+            puts(method);
+
+            buffer_tokens = strtok(NULL, " ");
+
+            // extract the file path
+            file_path = buffer_tokens;
+            puts(file_path);
+
+            // if the file path is "/" -> reply with index.html
+            if (strcmp(file_path, "/") == 0)
+            {
+                file_path = (char*)malloc(REQUEST_SIZE);
+                strcat(file_path, SRC_DIR);
+                strcat(file_path, "index.html");
+
+                puts(file_path);
+            }
+
+            // send the requested file
+            file = fopen(file_path, "r");
+            if (file == NULL)
+            {
+                snprintf(response, 100U,
+                         "HTTP/1.1 404 Not Found\r\n"
+                         "Content-Type: text/plain\r\n"
+                         "\r\n"
+                         "404 Not Found\n");
+
+                response_len = strlen(response);
+            }
+            else
+            {
+                // Store header in response
+                snprintf(response, 100U,
+                        "HTTP/1.1 200 OK\r\n"
+                        "Content-Type: text/html\r\n"
+                        "\r\n");
+
+                // Read from file and store in response
+                response_len = strlen(response);
+
+                char* file_content = (char*)malloc(REPLY_SIZE);
+                size_t bytes_read = fread(file_content, 1, REPLY_SIZE, file);
+                memcpy(response + response_len, file_content, bytes_read);
+                response_len += bytes_read;
+
+                // free the memory and close the file
+                free(file_content);
+                fclose(file);
+            }
+
+            // send the response
+            send(client_fd, response, response_len, 0);
+        }
     }
 
+
+exit:
     close(client_fd);
     free(arg);
     free(buffer);
+    free(response);
+    free(file_path);
     return NULL;
 }
