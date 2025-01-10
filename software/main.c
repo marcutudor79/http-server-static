@@ -11,7 +11,7 @@
 #include "unistd.h"
 #include "utils.h"
 
-#define PORT 80
+#define PORT 8080
 
 /******************************************************************************/
 /*                              DEFINES                                       */
